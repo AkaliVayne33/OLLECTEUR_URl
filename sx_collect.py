@@ -66,6 +66,7 @@ def main():
     done = 0
     for eid, e in list(opened.items()):
         if now < e["start"] + 60: continue
+        if not complete and now < e["start"] + 12 * 3600: continue  # fil pas lu jusqu'au bout : on ne fige pas la clôture
         close = {}
         for h, m in e["mk"].items():
             pts = sorted((t, p) for t, hh, p in e["tr"] if hh == h and e["start"] - LOOKBACK <= t <= e["start"])

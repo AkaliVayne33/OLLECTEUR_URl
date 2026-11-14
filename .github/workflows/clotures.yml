@@ -9,25 +9,35 @@ concurrency: clotures
 jobs:
   relever:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 14
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main               # dernière version (pas celle du déclenchement) : un relevé en file d'attente part des données du précédent
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: python sx_collect.py
-        continue-on-error: true   # une panne SX n'empêche pas le relevé Novig
+        continue-on-error: true   # une panne d'une source n'empêche pas les autres
+        timeout-minutes: 4
       - run: python novig_collect.py
         continue-on-error: true
+        timeout-minutes: 3
       - run: python hl_collect.py
         continue-on-error: true
+        timeout-minutes: 2
       - run: python px_collect.py
         continue-on-error: true
+        timeout-minutes: 3
       - if: always()
+        timeout-minutes: 1
         run: |
           git config user.name "clotures-bot"
           git config user.email "clotures-bot@users.noreply.github.com"
           for f in novig_closes.json sx_closes.json sx_state.json hl_closes.json px_closes.json; do
             [ -s "$f" ] && git add "$f"   # seulement les fichiers de cotes non vides
           done
-          git diff --cached --quiet || (git commit -m "clotures" && git push)
+          git diff --cached --quiet && exit 0
+          git commit -m "clotures"
+          git pull --rebase -X theirs origin main || git rebase --abort   # en cas de course, nos fichiers récents l'emportent
+          git push

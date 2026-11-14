@@ -44,6 +44,7 @@ def main():
             coin = f"#{o['outcome'] * 10 + side}"
             if coin in db: continue
             cd = post({"type": "candleSnapshot", "req": {"coin": coin, "interval": "1m", "startTime": (k - 900) * 1000, "endTime": k * 1000}})
+            cd = [c for c in cd or [] if c["t"] < k * 1000]  # la bougie qui s'ouvre au coup d'envoi est déjà en direct
             if not cd: continue
             last = [float(c["c"]) for c in cd if c["t"] / 1000 >= k - 300]
             db[coin] = {"k": k, "c": round(statistics.median(last) if last else float(cd[-1]["c"]), 5)}; done += 1

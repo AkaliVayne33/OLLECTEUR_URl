@@ -9,8 +9,8 @@ fichiers : un lancement par semaine suffit. Les fichiers ne contiennent que des 
 
 1. Créer un compte sur https://github.com puis un **nouveau dépôt public** (ex. `clotures`), en cochant
    « Add a README file ».
-2. Dans le dépôt : **Add file → Upload files**, glisser `novig_collect.py`, `sx_collect.py`, `novig_closes.json`,
-   `sx_closes.json`, `sx_state.json`, puis **Commit changes**.
+2. Dans le dépôt : **Add file → Upload files**, glisser `novig_collect.py`, `sx_collect.py`, `hl_collect.py`,
+   `px_collect.py`, `novig_closes.json`, `sx_closes.json`, `sx_state.json`, puis **Commit changes**.
 3. **Add file → Create new file**, nom : `.github/workflows/clotures.yml`, coller le contenu du fichier
    `.github/workflows/novig.yml` de ce dossier, puis **Commit** (le dossier `.github` est masqué sous Windows).
 4. Onglet **Actions** : activer les workflows si GitHub le demande, ouvrir « clotures » → **Run workflow** pour un
