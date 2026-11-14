@@ -21,10 +21,13 @@ jobs:
         continue-on-error: true
       - run: python hl_collect.py
         continue-on-error: true
+      - run: python px_collect.py
+        continue-on-error: true
       - if: always()
         run: |
           git config user.name "clotures-bot"
           git config user.email "clotures-bot@users.noreply.github.com"
-          touch hl_closes.json
-          git add novig_closes.json sx_closes.json sx_state.json hl_closes.json
+          for f in novig_closes.json sx_closes.json sx_state.json hl_closes.json px_closes.json; do
+            [ -s "$f" ] && git add "$f"   # seulement les fichiers de cotes non vides
+          done
           git diff --cached --quiet || (git commit -m "clotures" && git push)
