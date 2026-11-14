@@ -27,7 +27,7 @@ def pages(u, stop=None):
     out, after = [], None
     for _ in range(100):
         r = get(u + (f"&after={after}" if after else ""))
-        if r is None: return out or None
+        if r is None: return None  # page en échec : liste incomplète refusée (la clôture sera retentée au passage suivant)
         it = r.get("items", []); out += it; after = r.get("next")
         if not after or not it or (stop and stop(it)): break
     return out
