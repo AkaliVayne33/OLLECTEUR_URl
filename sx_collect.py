@@ -11,6 +11,7 @@ OUT, STATE = os.path.join(HERE, "sx_closes.json"), os.path.join(HERE, "sx_state.
 TYPES = {1, 52, 226}            # 1 = 1X2 (3 marchés binaires « X / Not X »), 52 / 226 = vainqueur (prolongation comprise)
 FIRST_SCAN = 2 * 86400          # premier passage : 2 jours d'historique
 LOOKBACK, KEEP = 6 * 3600, 120 * 86400
+BUDGET = 170           # secondes de lecture du fil par passage (l'étape GitHub est coupée à 4 min)
 
 
 def get(u):
@@ -40,8 +41,9 @@ def main():
     now = time.time()
     db, st = rj(OUT, {}), rj(STATE, {"newest": now - FIRST_SCAN, "open": {}})
     opened = st["open"]  # événements à venir : {eventId: {t1, t2, league, start, mk: {hash: {type, one}}, tr: [[t, hash, p_one]]}}
-    newest, nk, n, complete = st["newest"], None, 0, False
+    newest, nk, n, complete, cut = st["newest"], None, 0, False, False
     for _ in range(600):  # fil des transactions, du plus récent au plus ancien, jusqu'au dernier relevé
+        if time.time() - now > BUDGET: cut = True; break  # finir avant la limite de l'étape GitHub (4 min) et tout enregistrer
         r = get(API + (f"&nextKey={nk}" if nk else ""))
         if not r: break  # échec : le repère n'avance pas, ces transactions seront relues au passage suivant
         d = r.get("data") or {}; tr = d.get("trades") or []; nk = d.get("nextKey")
@@ -62,6 +64,9 @@ def main():
             if x["tradeId"] not in e.setdefault("ids", []):  # pas de doublon si une page est relue
                 e["ids"].append(x["tradeId"]); e["tr"].append([t, x["marketHash"], round(p if x["isBettingOutcomeOne"] else 1 - p, 5)])
         if not nk or not tr: complete = True; break
+    if cut and newest > st["newest"]:  # retard trop grand (panne, planning GitHub sauté) : on garde le plus récent, le trou est perdu
+        print(f"retard : fil lu sur {n} transactions seulement, les plus anciennes du trou sont abandonnées")
+        complete = True
     if complete: st["newest"] = newest  # repère avancé seulement si tout le fil jusqu'au repère précédent a été lu
     done = 0
     for eid, e in list(opened.items()):

@@ -5,7 +5,7 @@ des 6 heures précédentes) et l'écrit dans novig_closes.json. Bibliothèque st
 import json, os, statistics, time, urllib.request
 
 B = "https://api.novig.us/v3/public/catalog"
-LEAGUES = ("NBA", "NFL", "EPL", "NHL", "MLS", "NCAAF", "NCAAB")
+LEAGUES = ("NBA", "NFL", "EPL")  # les seules ligues Novig rapprochées par hl_verif (NLEAGUE)
 TYPES = ("MONEY", "MONEYLINE_3_WAY_WIN", "MONEYLINE_3_WAY_DRAW")
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "novig_closes.json")
 AHEAD = 6 * 3600       # marchés repérés dans les 6 h avant le coup d'envoi

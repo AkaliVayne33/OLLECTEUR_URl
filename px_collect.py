@@ -58,8 +58,12 @@ def main():
     except Exception: db = {}
     now, snaps = time.time(), 0
     for t in tournaments():
-        r = get(f"{API}/v1/tournaments/{t['id']}/events?limit=100") or {}
-        for ev in r.get("data") or []:
+        evs, nxt = [], None
+        for _ in range(10):  # pagination : au-delà de 100 matchs par tournoi
+            r = get(f"{API}/v1/tournaments/{t['id']}/events?limit=100" + (f"&next={nxt}" if nxt else "")) or {}
+            evs += r.get("data") or []; nxt = r.get("next")
+            if not nxt or not r.get("data"): break
+        for ev in evs:
             try: start = ts(ev["scheduled"])
             except Exception: continue
             if ev.get("status") != "not_started" or not now < start <= now + AHEAD: continue
