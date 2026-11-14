@@ -1,0 +1,24 @@
+name: clotures
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # toutes les 15 min (GitHub peut décaler de quelques minutes)
+  workflow_dispatch:          # bouton « Run workflow » pour lancer à la main
+permissions:
+  contents: write
+concurrency: clotures
+jobs:
+  relever:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python sx_collect.py
+      - run: python novig_collect.py
+      - run: |
+          git config user.name "clotures-bot"
+          git config user.email "clotures-bot@users.noreply.github.com"
+          git add novig_closes.json sx_closes.json sx_state.json
+          git diff --cached --quiet || (git commit -m "clotures" && git push)
