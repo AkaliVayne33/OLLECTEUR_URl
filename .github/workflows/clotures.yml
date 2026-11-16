@@ -1,43 +1,48 @@
 name: clotures
+# GitHub n'honore pas un cron de 15 min (constaté : un lancement toutes les 4 à 7 h). Chaque lancement reste donc actif
+# ~5 h 45 et relève tout toutes les 10 min ; les lancements suivants attendent en file (concurrency) et prennent le relais.
 on:
   schedule:
-    - cron: "*/15 * * * *"   # toutes les 15 min (GitHub peut décaler de quelques minutes)
+    - cron: "*/15 * * * *"
   workflow_dispatch:          # bouton « Run workflow » pour lancer à la main
 permissions:
   contents: write
-concurrency: clotures
+concurrency:
+  group: clotures
+  cancel-in-progress: false   # le lancement en cours finit sa boucle, le suivant attend
 jobs:
   relever:
     runs-on: ubuntu-latest
-    timeout-minutes: 14
+    timeout-minutes: 355      # limite GitHub : 6 h par tâche
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main               # dernière version (pas celle du déclenchement) : un relevé en file d'attente part des données du précédent
+          ref: main               # dernière version : un lancement en file part des données du précédent
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python sx_collect.py
-        continue-on-error: true   # une panne d'une source n'empêche pas les autres
-        timeout-minutes: 4
-      - run: python novig_collect.py
-        continue-on-error: true
-        timeout-minutes: 3
-      - run: python hl_collect.py
-        continue-on-error: true
-        timeout-minutes: 2
-      - run: python px_collect.py
-        continue-on-error: true
-        timeout-minutes: 3
-      - if: always()
-        timeout-minutes: 1
+      - name: relever toutes les 10 min pendant ~5 h 45
         run: |
           git config user.name "clotures-bot"
           git config user.email "clotures-bot@users.noreply.github.com"
-          for f in novig_closes.json sx_closes.json sx_state.json hl_closes.json px_closes.json; do
-            [ -s "$f" ] && git add "$f"   # seulement les fichiers de cotes non vides
+          end=$(( $(date +%s) + 345 * 60 )); i=0
+          while :; do
+            t0=$(date +%s); i=$((i + 1))
+            timeout 240 python sx_collect.py || echo "sx en échec"      # une panne d'une source n'empêche pas les autres
+            timeout 180 python novig_collect.py || echo "novig en échec"
+            timeout 120 python hl_collect.py || echo "hl en échec"
+            timeout 180 python px_collect.py || echo "px en échec"
+            last=$(( t0 + 600 >= end ))
+            for f in novig_closes.json sx_closes.json hl_closes.json px_closes.json; do
+              [ -s "$f" ] && git add "$f"   # cotes : poussées dès qu'elles changent
+            done
+            # état SX (150 Ko, change à chaque passage) : une fois par heure et en fin de tâche, pour ne pas gonfler l'historique
+            if [ $((i % 6)) -eq 0 ] || [ "$last" -eq 1 ]; then [ -s sx_state.json ] && git add sx_state.json; fi
+            if ! git diff --cached --quiet; then
+              git commit -q -m "clotures"
+              git pull -q --rebase --autostash -X theirs origin main || git rebase --abort   # état SX non commité mis de côté ; en cas de course, nos fichiers récents l'emportent
+              git push -q || echo "push en échec, réessai au passage suivant"
+            fi
+            [ "$last" -eq 1 ] && break
+            s=$(( 600 - ($(date +%s) - t0) )); [ $s -gt 0 ] && sleep $s
           done
-          git diff --cached --quiet && exit 0
-          git commit -m "clotures"
-          git pull --rebase -X theirs origin main || git rebase --abort   # en cas de course, nos fichiers récents l'emportent
-          git push
