@@ -1,7 +1,8 @@
 """Collecteur des clôtures SX Bet (bourse sportive : NBA, NFL, foot dont sélections nationales, esport…).
 L'API publique (trades-v3/public, sans clé) ne montre plus les matchs réglés : ce collecteur lit le fil des
 transactions toutes les 15 min, garde celles des marchés vainqueur avant le coup d'envoi, puis calcule la clôture
-(médiane des 5 dernières minutes, sinon dernière transaction des 6 h précédentes) dans sx_closes.json."""
+au milieu du carnet, reconstitué par les deux côtés des preneurs (voir close_of), dans sx_closes.json.
+Le carnet lui-même (orders-v3) demande une clé API liée à un compte SX : pas utilisé."""
 import json, os, statistics, time, urllib.request
 from datetime import datetime
 
@@ -37,6 +38,21 @@ def wj(p, o):
     os.replace(p + ".tmp", p)
 
 
+def close_of(tr, start):
+    """Clôture de l'issue « one » : (proba, méthode). Le fil public ne montre que les preneurs : un preneur sur « one »
+    paie le prix de vente de « one », un preneur sur l'autre issue révèle son prix d'achat. Moyenne des médianes des
+    deux côtés = milieu du carnet (« milieu »), sur 5 min, sinon 30 min, sinon 2 h avant le coup d'envoi.
+    Un seul côté traité : médiane des 5 dernières minutes, sinon dernière transaction des 6 h (« un côté », ancien calcul)."""
+    pts = sorted(x for x in tr if start - LOOKBACK <= x[0] <= start)
+    if not pts: return None
+    for w in (300, 1800, 7200):
+        a = [x[2] for x in pts if x[0] >= start - w and len(x) > 3 and x[3] == 1]
+        b = [x[2] for x in pts if x[0] >= start - w and len(x) > 3 and x[3] == 2]
+        if a and b: return round((statistics.median(a) + statistics.median(b)) / 2, 4), "milieu"
+    last = [x[2] for x in pts if x[0] >= start - 300]
+    return round(statistics.median(last) if last else pts[-1][2], 4), "un côté"
+
+
 def main():
     now = time.time()
     db, st = rj(OUT, {}), rj(STATE, {"newest": now - FIRST_SCAN, "open": {}})
@@ -62,7 +78,8 @@ def main():
             if one and not m["one"]: m["one"] = one
             p = int(x["weightedAverageOdds"]) / 1e20  # proba implicite de l'issue jouée
             if x["tradeId"] not in e.setdefault("ids", []):  # pas de doublon si une page est relue
-                e["ids"].append(x["tradeId"]); e["tr"].append([t, x["marketHash"], round(p if x["isBettingOutcomeOne"] else 1 - p, 5)])
+                e["ids"].append(x["tradeId"])  # côté du preneur gardé (1 / 2) : clôture au milieu, voir close_of
+                e["tr"].append([t, x["marketHash"], round(p if x["isBettingOutcomeOne"] else 1 - p, 5), 1 if x["isBettingOutcomeOne"] else 2])
         if not nk or not tr: complete = True; break
     if cut and newest > st["newest"]:  # retard trop grand (panne, planning GitHub sauté) : on garde le plus récent, le trou est perdu
         print(f"retard : fil lu sur {n} transactions seulement, les plus anciennes du trou sont abandonnées")
@@ -72,14 +89,13 @@ def main():
     for eid, e in list(opened.items()):
         if now < e["start"] + 60: continue
         if not complete and now < e["start"] + 12 * 3600: continue  # fil pas lu jusqu'au bout : on ne fige pas la clôture
-        close = {}
+        close, how = {}, {}
         for h, m in e["mk"].items():
-            pts = sorted((t, p) for t, hh, p in e["tr"] if hh == h and e["start"] - LOOKBACK <= t <= e["start"])
-            if not pts or not m["one"]: continue
-            last = [p for t, p in pts if t >= e["start"] - 300]
-            close.setdefault(str(m["type"]), {})[m["one"]] = round(statistics.median(last) if last else pts[-1][1], 4)
+            if not m["one"]: continue
+            r = close_of([x for x in e["tr"] if x[1] == h], e["start"])
+            if r: close.setdefault(str(m["type"]), {})[m["one"]], how[h] = r
         if not close and now < e["start"] + 12 * 3600: continue  # rien encore : retenté pendant 12 h
-        db[eid] = {k: e[k] for k in ("t1", "t2", "league", "start")} | {"close": close}
+        db[eid] = {k: e[k] for k in ("t1", "t2", "league", "start")} | {"close": close, "how": sorted(set(how.values()))}
         del opened[eid]; done += 1
     db = {k: v for k, v in db.items() if v["start"] > now - KEEP}
     wj(OUT, db); wj(STATE, st)
